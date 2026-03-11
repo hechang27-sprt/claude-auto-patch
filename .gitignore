@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Cache files (user-local)
+.auto-patch-cache.json
+
+# Backup files created during patching
+*.autopatch-bak
+*.tmp
+*.old
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
