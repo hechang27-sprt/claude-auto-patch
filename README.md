@@ -15,7 +15,7 @@ A configurable auto-patch system for [Claude Code](https://docs.anthropic.com/en
 ### 1. Clone
 
 ```bash
-git clone https://github.com/anthropicSZ/claude-auto-patch.git
+git clone https://github.com/Cedriccmh/claude-auto-patch.git
 ```
 
 ### 2. Install Hook
