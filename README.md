@@ -8,63 +8,68 @@
 
 ## English
 
-A configurable auto-patch system for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Automatically applies binary patches on session startup and survives updates.
+A configurable auto-patch system for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Automatically applies binary patches before Claude starts and survives updates.
 
 ### Features
 
-- **Auto-patch on startup** - SessionStart hook detects updates and re-applies patches automatically
-- **Configurable** - Enable/disable individual patches via JSON config
-- **Smart caching** - Skips re-scanning unchanged binaries (uses file mtime)
-- **Cross-platform** - Windows (rename-swap for running exe), macOS (codesign), Linux
-- **Create patches with AI** - `/create-patch` skill guides Claude through the entire patch creation workflow
+- **Auto-patch before startup** — Shell wrapper runs patches before Claude launches, avoiding file-lock issues
+- **Configurable** — Enable/disable individual patches via JSON config
+- **Smart caching** — Skips re-scanning unchanged binaries (uses file mtime)
+- **Cross-platform** — Windows (PowerShell), macOS/Linux (Bash/Zsh)
+- **Zero-copy install** — Clone once, `git pull` to update. No files copied to `~/.claude/`
+- **Create patches with AI** — `/create-patch` skill guides Claude through the entire patch creation workflow
 
 ### Quick Start
 
-#### 1. Clone
+```bash
+git clone https://github.com/Cedriccmh/claude-auto-patch.git ~/.claude-auto-patch
+cd ~/.claude-auto-patch && python install.py
+```
+
+Restart your shell. Done!
+
+### Update
 
 ```bash
-git clone https://github.com/Cedriccmh/claude-auto-patch.git
+cd ~/.claude-auto-patch && git pull
 ```
 
-#### 2. Install Hook
-
-Copy the hook files to your Claude Code hooks directory:
+### Uninstall
 
 ```bash
-cp hooks/auto-patch.py ~/.claude/hooks/
-cp hooks/auto-patch-config.json ~/.claude/hooks/
+cd ~/.claude-auto-patch && python install.py --uninstall
 ```
 
-Add the SessionStart hook to your `~/.claude/settings.json`:
+### Other Commands
 
-```jsonc
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            // Adjust path to where you placed auto-patch.py
-            "command": "python ~/.claude/hooks/auto-patch.py"
-          }
-        ]
-      }
-    ]
-  }
-}
+```bash
+python install.py --status    # Check installation status
+python install.py --dry-run   # Preview changes without modifying files
 ```
 
-#### 3. Install Skill (Optional)
+### How It Works
+
+The installer injects a shell wrapper function into your profile (`$PROFILE` for PowerShell, `.bashrc`/`.zshrc` for Bash/Zsh):
+
+```
+You type "claude"
+  -> Shell wrapper function runs
+  -> No claude process running? -> python auto_patch.py
+    -> Load config (which patches are enabled)
+    -> Find claude binary / cli.js in PATH
+    -> Check cache (file mtime + enabled patches)
+    -> If unchanged: skip (< 1ms)
+    -> If changed: apply patches (equal-length byte replacement)
+  -> Launch the real claude binary
+```
+
+### Install Skill (Optional)
 
 To use the `/create-patch` skill for AI-assisted patch creation:
 
 ```bash
-cp -r skills/create-patch ~/.claude/skills/
+cp -r ~/.claude-auto-patch/skills/create-patch ~/.claude/skills/
 ```
-
-Or install as a plugin by adding this repo path to your Claude Code configuration.
 
 ### Configuration
 
@@ -102,7 +107,7 @@ Use `/create-patch` in Claude Code and describe what you want to patch. The AI w
 
 #### Manual
 
-Add a `PatchDef` to `hooks/auto-patch.py`:
+Add a `PatchDef` to `auto_patch.py`:
 
 ```python
 "your_patch": PatchDef(
@@ -125,24 +130,7 @@ Then add the toggle to `auto-patch-config.json`:
 }
 ```
 
-### How It Works
-
-#### Auto-Patch Flow
-
-```
-Claude Code starts
-  -> SessionStart hook triggers
-  -> Load config (which patches are enabled)
-  -> Find claude binary / cli.js in PATH
-  -> Check cache (file mtime + enabled patches)
-  -> If unchanged: skip (< 1ms)
-  -> If changed: read file, check each patch status
-  -> Apply unpatched patches (equal-length byte replacement)
-  -> Backup original, write patched version
-  -> Update cache
-```
-
-#### Equal-Length Replacement
+### Equal-Length Replacement
 
 Patches must be exactly the same byte length as the original code. This is achieved by using JavaScript comments (`/* */`) as padding:
 
@@ -151,7 +139,7 @@ Original: return["api.anthropic.com"].includes(Xe)}catch{return!1}
 Patched:  return!0/*                          */}catch{return!0}
 ```
 
-#### Three-State Detection
+### Three-State Detection
 
 Each patch has two regexes:
 - `target_re` matches unpatched code -> safe to apply
@@ -169,63 +157,68 @@ Each patch has two regexes:
 
 ## 中文
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的可配置自动补丁系统。会话启动时自动应用补丁，更新后自动恢复。
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 的可配置自动补丁系统。在 Claude 启动前自动应用补丁，更新后自动恢复。
 
 ### 功能
 
-- **启动时自动补丁** — SessionStart hook 检测更新并自动重新应用补丁
+- **启动前自动补丁** — Shell wrapper 在 Claude 启动前运行补丁，避免文件锁问题
 - **可配置** — 通过 JSON 配置文件启用/禁用单个补丁
 - **智能缓存** — 跳过未变更的二进制文件（基于 mtime），< 1ms
-- **跨平台** — Windows（rename-swap 处理运行中的 exe）、macOS（codesign）、Linux
+- **跨平台** — Windows（PowerShell）、macOS/Linux（Bash/Zsh）
+- **零拷贝安装** — clone 一次，`git pull` 即更新。无需复制文件到 `~/.claude/`
 - **AI 辅助创建补丁** — `/create-patch` skill 引导 Claude 完成补丁创建全流程
 
 ### 快速开始
 
-#### 1. 克隆
+```bash
+git clone https://github.com/Cedriccmh/claude-auto-patch.git ~/.claude-auto-patch
+cd ~/.claude-auto-patch && python install.py
+```
+
+重启终端即可！
+
+### 更新
 
 ```bash
-git clone https://github.com/Cedriccmh/claude-auto-patch.git
+cd ~/.claude-auto-patch && git pull
 ```
 
-#### 2. 安装 Hook
-
-将 hook 文件复制到 Claude Code 的 hooks 目录：
+### 卸载
 
 ```bash
-cp hooks/auto-patch.py ~/.claude/hooks/
-cp hooks/auto-patch-config.json ~/.claude/hooks/
+cd ~/.claude-auto-patch && python install.py --uninstall
 ```
 
-在 `~/.claude/settings.json` 中添加 SessionStart hook：
+### 其他命令
 
-```jsonc
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            // 调整为 auto-patch.py 的实际路径
-            "command": "python ~/.claude/hooks/auto-patch.py"
-          }
-        ]
-      }
-    ]
-  }
-}
+```bash
+python install.py --status    # 查看安装状态
+python install.py --dry-run   # 预览变更，不修改文件
 ```
 
-#### 3. 安装 Skill（可选）
+### 工作原理
+
+安装器将一个 shell wrapper 函数注入到你的 profile 中（PowerShell 的 `$PROFILE`、Bash 的 `.bashrc`、Zsh 的 `.zshrc`）：
+
+```
+你输入 "claude"
+  -> Shell wrapper 函数运行
+  -> 没有 claude 进程在运行？ -> python auto_patch.py
+    -> 加载配置（哪些补丁已启用）
+    -> 在 PATH 中查找 claude 二进制或 cli.js
+    -> 检查缓存（文件 mtime + 已启用补丁列表）
+    -> 未变更：跳过（< 1ms）
+    -> 已变更：应用补丁（等长字节替换）
+  -> 启动真正的 claude 二进制
+```
+
+### 安装 Skill（可选）
 
 使用 `/create-patch` skill 进行 AI 辅助补丁创建：
 
 ```bash
-cp -r skills/create-patch ~/.claude/skills/
+cp -r ~/.claude-auto-patch/skills/create-patch ~/.claude/skills/
 ```
-
-也可以作为 plugin 安装，将此仓库路径添加到 Claude Code 配置中。
 
 ### 配置
 
@@ -263,7 +256,7 @@ rm ~/.claude/.auto-patch-cache.json
 
 #### 手动添加
 
-在 `hooks/auto-patch.py` 中添加 `PatchDef`：
+在 `auto_patch.py` 中添加 `PatchDef`：
 
 ```python
 "your_patch": PatchDef(
@@ -286,24 +279,7 @@ rm ~/.claude/.auto-patch-cache.json
 }
 ```
 
-### 工作原理
-
-#### 自动补丁流程
-
-```
-Claude Code 启动
-  -> 触发 SessionStart hook
-  -> 加载配置（哪些补丁已启用）
-  -> 在 PATH 中查找 claude 二进制或 cli.js
-  -> 检查缓存（文件 mtime + 已启用补丁列表）
-  -> 未变更：跳过（< 1ms）
-  -> 已变更：读取文件，检查各补丁状态
-  -> 应用未补丁的项（等长字节替换）
-  -> 备份原始文件，写入补丁版本
-  -> 更新缓存
-```
-
-#### 等长替换
+### 等长替换
 
 补丁必须与原始代码完全等长。通过 JavaScript 注释（`/* */`）填充实现：
 
@@ -312,7 +288,7 @@ Claude Code 启动
 补丁: return!0/*                          */}catch{return!0}
 ```
 
-#### 三态检测
+### 三态检测
 
 每个补丁有两个正则表达式：
 - `target_re` 匹配未补丁代码 -> 可安全应用

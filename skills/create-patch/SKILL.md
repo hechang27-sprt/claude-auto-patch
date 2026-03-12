@@ -98,7 +98,7 @@ python scripts/validate_patch.py \
 
 ### 5. 注册补丁
 
-读取项目的 `hooks/auto-patch.py`，在 `PATCHES` 字典中添加新的 `PatchDef` 条目：
+读取项目的 `auto_patch.py`，在 `PATCHES` 字典中添加新的 `PatchDef` 条目：
 
 ```python
 "patch_name": PatchDef(
@@ -112,7 +112,7 @@ python scripts/validate_patch.py \
 ),
 ```
 
-更新 `hooks/auto-patch-config.json`，添加新补丁（默认启用）：
+更新 `auto-patch-config.json`，添加新补丁（默认启用）：
 
 ```json
 {
@@ -128,10 +128,10 @@ python scripts/validate_patch.py \
 ```bash
 # 清除缓存强制重新检测
 rm -f ~/.claude/.auto-patch-cache.json
-python hooks/auto-patch.py
+python auto_patch.py
 ```
 
-预期输出：`[auto-patch] claude.exe: applied patch_name`
+预期输出：`[auto-patch] claude.exe: applied patch_name (direct write)`
 
 ## 规则
 

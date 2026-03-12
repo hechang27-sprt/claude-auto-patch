@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Claude Code SessionStart Hook: Configurable auto-patch system
+Claude Code auto-patch engine
 
 Config: auto-patch-config.json (same directory)
 Cache:  ~/.claude/.auto-patch-cache.json
+
+Called by the shell wrapper installed via install.py.
 
 To add a new patch:
   1. Add a PatchDef entry to the PATCHES dict
@@ -384,7 +386,9 @@ def main():
             ok, method = _write_patched(target.path, patched_data)
             if not ok:
                 messages.append(
-                    f"[auto-patch] {target.path.name} write failed: {method}"
+                    f"[auto-patch] {target.path.name} write failed: {method}\n"
+                    f"  Hint: ensure no claude process is running, "
+                    f"or re-run via the shell wrapper (python install.py)"
                 )
                 continue
 
@@ -406,7 +410,7 @@ def main():
 
     _save_cache(cache)
 
-    # Output notifications (SessionStart hook stdout -> additionalContext)
+    # Output notifications
     for msg in messages:
         print(msg)
 
@@ -415,5 +419,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # Hook must never crash Claude Code startup
+        # Must never crash Claude Code startup
         pass
