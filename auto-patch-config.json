@@ -1,3 +1,5 @@
 {
-  "toolsearch": true
+  "tweakcc": false,
+  "toolsearch": false,
+  "btw": true
 }

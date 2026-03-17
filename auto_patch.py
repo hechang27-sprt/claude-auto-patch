@@ -12,6 +12,7 @@ To add a new patch:
   2. Add the toggle to auto-patch-config.json
 """
 
+import hashlib
 import json
 import os
 import re
@@ -36,6 +37,7 @@ BACKUP_SUFFIX = ".autopatch-bak"
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_FILE = SCRIPT_DIR / "auto-patch-config.json"
 CACHE_FILE = Path.home() / ".claude" / ".auto-patch-cache.json"
+TWEAKCC_CONFIG = Path.home() / ".tweakcc" / "config.json"
 
 
 # -- Patch definition framework -----------------------------------------------
@@ -102,16 +104,17 @@ PATCHES: dict[str, PatchDef] = {
         ),
     ),
 
+    "btw": PatchDef(
+        name="btw",
+        description="Force-enable /btw (Marble Whisper2) side-question feature",
+        # Matches: "tengu_marble_whisper2",!1  (Statsig gate default = false)
+        target_re=re.compile(rb'"tengu_marble_whisper2",!1'),
+        # Matches: "tengu_marble_whisper2",!0  (patched to true)
+        patched_re=re.compile(rb'"tengu_marble_whisper2",!0'),
+        build_replacement=lambda m: b'"tengu_marble_whisper2",!0',
+    ),
+
     # -- Add new patches here --
-    # "example": PatchDef(
-    #     name="example",
-    #     description="Example patch description",
-    #     target_re=re.compile(rb'original code regex'),
-    #     patched_re=re.compile(rb'patched code regex'),
-    #     build_replacement=lambda m: _equal_length_replace(
-    #         b"prefix", b"suffix", m
-    #     ),
-    # ),
 }
 
 
@@ -257,6 +260,98 @@ def _needs_check(
     return False
 
 
+# -- tweakcc integration -------------------------------------------------------
+# Runs `tweakcc --apply` before binary patches to reapply system prompt,
+# theme, and other tweakcc customizations after Claude Code updates.
+
+def _tweakcc_needs_run(cache: dict, targets: list[Target]) -> bool:
+    """Check if tweakcc --apply needs to run."""
+    if not TWEAKCC_CONFIG.is_file():
+        return False
+
+    entry = cache.get("tweakcc")
+    if not entry:
+        return True
+
+    try:
+        config_hash = hashlib.md5(TWEAKCC_CONFIG.read_bytes()).hexdigest()
+    except OSError:
+        return False
+
+    if entry.get("config_hash") != config_hash:
+        return True
+
+    for target in targets:
+        try:
+            mtime = target.path.stat().st_mtime
+        except OSError:
+            continue
+        if entry.get("target_mtimes", {}).get(str(target.path)) != mtime:
+            return True
+
+    return False
+
+
+def _run_tweakcc(targets: list[Target], cache: dict) -> list[str]:
+    """Run tweakcc --apply if needed. Returns notification messages."""
+    messages: list[str] = []
+
+    if not _tweakcc_needs_run(cache, targets):
+        return messages
+
+    # Find runner: direct > npx > pnpm dlx
+    if shutil.which("tweakcc"):
+        cmd = ["tweakcc", "--apply"]
+    elif shutil.which("npx"):
+        cmd = ["npx", "--yes", "tweakcc", "--apply"]
+    elif shutil.which("pnpm"):
+        cmd = ["pnpm", "dlx", "tweakcc", "--apply"]
+    else:
+        return messages
+
+    try:
+        kw: dict = {}
+        if IS_WINDOWS:
+            kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+            kw["shell"] = True
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, **kw)
+        if r.returncode == 0:
+            messages.append("[auto-patch] tweakcc --apply: done")
+        else:
+            stderr = r.stderr.strip()[:200] if r.stderr else ""
+            messages.append(
+                f"[auto-patch] tweakcc --apply: exit {r.returncode}"
+                + (f" ({stderr})" if stderr else "")
+            )
+    except subprocess.TimeoutExpired:
+        messages.append("[auto-patch] tweakcc --apply: timed out (60s)")
+    except Exception:
+        pass
+
+    return messages
+
+
+def _update_tweakcc_cache(cache: dict, targets: list[Target]):
+    """Update tweakcc cache entry with current file state."""
+    if not TWEAKCC_CONFIG.is_file():
+        cache.pop("tweakcc", None)
+        return
+    try:
+        config_hash = hashlib.md5(TWEAKCC_CONFIG.read_bytes()).hexdigest()
+        target_mtimes = {}
+        for target in targets:
+            try:
+                target_mtimes[str(target.path)] = target.path.stat().st_mtime
+            except OSError:
+                pass
+        cache["tweakcc"] = {
+            "config_hash": config_hash,
+            "target_mtimes": target_mtimes,
+        }
+    except OSError:
+        pass
+
+
 # -- Patch application ---------------------------------------------------------
 
 def _get_patch_status(data: bytes, patch: PatchDef) -> str:
@@ -352,8 +447,11 @@ def _resign_if_needed(path: Path):
 
 def main():
     config = load_config()
+
+    tweakcc_enabled = config.get("tweakcc", False)
     enabled = [name for name, on in config.items() if on and name in PATCHES]
-    if not enabled:
+
+    if not tweakcc_enabled and not enabled:
         return
 
     targets = find_targets()
@@ -363,7 +461,14 @@ def main():
     cache = _load_cache()
     messages: list[str] = []
 
+    # --- tweakcc: runs BEFORE binary patches ---
+    if tweakcc_enabled:
+        messages.extend(_run_tweakcc(targets, cache))
+
+    # --- Binary patches ---
     for target in targets:
+        if not enabled:
+            break
         if not _needs_check(target.path, enabled, cache):
             continue
 
@@ -407,6 +512,10 @@ def main():
             }
         except OSError:
             pass
+
+    # --- Update tweakcc cache with final state (after all patches applied) ---
+    if tweakcc_enabled:
+        _update_tweakcc_cache(cache, targets)
 
     _save_cache(cache)
 
