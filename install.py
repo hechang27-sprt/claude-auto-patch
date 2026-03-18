@@ -59,6 +59,18 @@ claude() {{
 }}
 # CLAUDE-AUTO-PATCH:END"""
 
+FISH_TEMPLATE = """\
+# CLAUDE-AUTO-PATCH:START - managed by claude-auto-patch, do not edit
+function claude
+    if not pgrep -x claude >/dev/null 2>&1
+        set -l p "{patch_script}"
+        if test -f $p
+            python3 $p 2>/dev/null
+        end
+    end
+    command claude $argv
+end
+# CLAUDE-AUTO-PATCH:END"""
 
 # ---------------------------------------------------------------------------
 # Shell detection
@@ -86,6 +98,11 @@ def _detect_shells() -> list[tuple[str, Path]]:
     zshrc = home / ".zshrc"
     if zshrc.exists():
         shells.append(("zsh", zshrc))
+
+    # Fish
+    fish_config = home / ".config" / "fish" / "config.fish"
+    if fish_config.exists() or (home / ".config" / "fish").exists():
+        shells.append(("fish", fish_config))
 
     return shells
 
@@ -147,6 +164,8 @@ def _build_block(shell: str) -> str:
     patch_path = str(PATCH_SCRIPT).replace("\\", "/")
     if shell == "pwsh":
         return PWSH_TEMPLATE.format(patch_script=patch_path)
+    elif shell == "fish":
+        return FISH_TEMPLATE.format(patch_script=patch_path)
     else:
         return BASH_ZSH_TEMPLATE.format(patch_script=patch_path)
 
